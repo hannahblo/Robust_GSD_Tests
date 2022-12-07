@@ -8,6 +8,8 @@ library(dplyr)
 ### Preparing Data Set
 ################################################################################
 
+# Anmerkung zerlegen in zwei Datensätzen (Männer und Frauen)
+
 # Info about the record: https://www.gesis.org/allbus/allbus
 # Here Allbus from 2014, see:
 # file:///C:/Users/ru39zel/Downloads/ZA5240_fb.pdf.
@@ -22,6 +24,7 @@ dat <- dat_read[which(dat_read$V5 == "SPLIT B: F75B"),
                 c("V226", "V102", "V417")]
 
 colnames(dat) <- c("Gesundheit", "Ausbildung", "Einkommen")
+dat[["Gesundheit"]] <- 7 - as.numeric(dat[["Gesundheit"]])
 sapply(dat, function(y) sum(length(which(is.na(y))))) # number of nas per column
 dat <- dat[rowSums(is.na(dat)) == 0,] # deleted NAs
 dat$ID <- seq(1, dim(dat)[1], 1)
@@ -37,8 +40,11 @@ dat[["Einkommen"]] <- as.numeric(dat[["Einkommen"]])
 
 
 # Toy Dataset
+dat <- dat[seq(5,10), ]
+dat <- dat[seq(11,16), ]
 dat <- dat[seq(1,100), ]
 head(dat)
+dat
 
 
 
@@ -46,6 +52,13 @@ head(dat)
 ################################################################################
 # Berechnung von R1
 ################################################################################
+
+# Bindungen raus schmeißen
+# TODO --> identisch in allen Komponenten sperat für Männer und Frauen
+# Gewichte Merken
+# duplicates
+
+
 
 # Unique combination of ordinal observations
 dim(unique(dat[,c("Gesundheit", "Ausbildung")])) # [1] 25  2
@@ -85,6 +98,8 @@ for (i in 2:dim(sort_dat)[1]) {
 # We have to add for the last group the "to" part
 i_start_ordinal_groups[numb_unique_ordinal, 4] <- dim(sort_dat)[1]
 head(i_start_ordinal_groups)
+# i_start_ordinal_groups
+dim(i_start_ordinal_groups)
 
 
 # Now, we compute r_1
@@ -152,19 +167,17 @@ for (i in 1:n) {
   }
   # here we have a +1, because <= also counts itself and thus, at this position
   # here is a -1 in the entry
-  # TODO
-  # STOP: DA STIMMT WAS NICHT; WEIL EIGENTLICH IST DAS +! BEREITS IN DER BASE_
-  # ENTRY VARIABLE DRIN
   r_1[i, index_below] <- -base_entry + 1
 }
 end_time <- Sys.time()
 duration_time <- end_time - start_time
-duration_time
+duration_time # Time difference of 4.44551 secs
 
 r_1
 rowSums(r_1)
 head(df_r1_values)
-
+dim(df_r1_values)
+which(rowSums(abs(r_1)) == 0)
 
 
 ### Berechnung von R2
@@ -180,8 +193,8 @@ head(df_r1_values)
 # ICH VERWORFEN WERDEN KANN. DAS HAT ALSO FÜR DAS KOMMENDE KEINEN EINFLUSS
 sort_df_r1 <- df_r1_values[
   order(df_r1_values[["Gesundheit_lower"]], df_r1_values[["Ausbildung_lower"]],
-        -as.numeric(as.factor(df_r1_values[["Gesundheit_upper"]])),
-        -as.numeric(as.factor(df_r1_values[["Ausbildung_upper"]])),
+        as.numeric(as.factor(df_r1_values[["Gesundheit_upper"]])),
+        as.numeric(as.factor(df_r1_values[["Ausbildung_upper"]])),
         df_r1_values[["difference_numeric"]]
   ), ]
 head(sort_df_r1)
@@ -227,12 +240,14 @@ i_df_ordinal_groups[numb_unique_ordinal, 6] <- dim(sort_df_r1)[1]
 head(i_df_ordinal_groups)
 
 
-# Now, we compute r_1
+# Now, we compute r_2, each row represents one pair and every other pair which
+# lies above
 m <- dim(sort_df_r1)[1]
-r_2 <- matrix(rep(0, n * m), nrow = m)
+r_2 <- matrix(rep(0, m*n), nrow = m)
 
 start_time <- Sys.time()
 # We go through every existing relation in r_1 which is given by sort_df_r1
+# This code is analogously to the one in the r_1 part
 for (i in 1:dim(sort_df_r1)[1]) { # DAS HIER KANN MAN GUT PARALLELISIERN
   basis_value <- sort_df_r1[i, c("Gesundheit_lower", "Ausbildung_lower",
                                  "Gesundheit_upper", "Ausbildung_upper",
@@ -243,9 +258,9 @@ for (i in 1:dim(sort_df_r1)[1]) { # DAS HIER KANN MAN GUT PARALLELISIERN
          which(i_df_ordinal_groups[, 2] >= basis_value[1, 2]),
          which(i_df_ordinal_groups[, 3] <= basis_value[1, 3]),
          which(i_df_ordinal_groups[, 4] <= basis_value[1, 4])))
+  # since reflexivity is given larger_ordinal is never empty
   below_entry <- 0
   for (j in larger_ordinal) {
-    # erster Index in der
     difference_drueber <-
       purrr::detect_index(sort_df_r1[seq(from = i_df_ordinal_groups[j, "from"],
                                        to = i_df_ordinal_groups[j,  "to"]),
@@ -257,33 +272,43 @@ for (i in 1:dim(sort_df_r1)[1]) { # DAS HIER KANN MAN GUT PARALLELISIERN
       index_above <- seq(i_df_ordinal_groups[j,  "from"] + difference_drueber - 1,
                          i_df_ordinal_groups[j,  "to"],
                          1)
-      r_2[i, sort_df_r1[index_above, 1]] <- 1
-      r_2[i, sort_df_r1[index_above, 2]] <- 1
-      below_entry <- below_entry + length(index_above)
+
+      # delete the relation with itself
+      delete_reflexiv <- intersect(which(sort_df_r1[index_above, 1] == basis_value_id[["ID_lower"]]),
+                                   which(sort_df_r1[index_above, 2] == basis_value_id[["ID_upper"]]))
+      index_above <- index_above[-delete_reflexiv]
+
+      # ACHTUNG HIER GIBT ES DERZEIT AUCH EIN PROBLEM MIT DUPLIKATEN
+      # DIE EINTRÄGE ERGEBEN DANN ÜBERHAUPT KEINEN SINN MEHR
+      if (!(length(index_above) == 0)) {
+        r_2[i, sort_df_r1[index_above, 1]] <- 1
+        r_2[i, sort_df_r1[index_above, 2]] <- 1
+        below_entry <- below_entry + length(length(index_above))
+      }
+
     }
   }
   # TODO
-  # STOP: DA STIMMT WAS NICHT
-  r_2[i, basis_value_id["ID_lower"]] <- -(below_entry/2) + 1
-  r_2[i, basis_value_id["ID_upper"]] <- -(below_entry/2) + 1
+  # STOP: DA STIMMT WAS NICHT - Frage Christoph unten
+  # ACHTUNG reflexiv
+  r_2[i, basis_value_id[["ID_lower"]]] <- -(below_entry/2)
+  r_2[i, basis_value_id[["ID_upper"]]] <- -(below_entry/2)
 }
 end_time <- Sys.time()
 duration_time <- end_time - start_time
 duration_time
 head(r_2)
 r_2
+length(which(rowSums(abs(r_2)) == 0))
+dim(r_2)
 rowSums(r_2)
 
 
 ################################################################################
 ### Fragen
 ################################################################################
-# Frage GS: Warnung beim Einlesen?
-# Gibt genau diesen Datensatz auch auf Englisch, wäre das sinnvoll?
-# Ergibt es Sinn, dass (1,1) im Ordinalen nicht existiert --> Ich glaube, dass
-#     ich Ausbildung falschherum kodiert habe
-# Frage CJ: Wie lang braucht dein Algorithmus bei 100? Bei mir sind das nur
-#     wenige Sekunden derzeit.... (Ich glaube, aber das ich etwas übersehen
-#     habe)
+# @ Christoph, also du hast die Beobachtungen a,b,c,d,e und nach R_2 gilt:
+#   (a,b) <= (c,d) und (a,b) <= (c,e)
+#   Welchen Wert hat der Eintrag c bei dir? 1 oder 2?
 
 

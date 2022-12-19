@@ -3,6 +3,7 @@
 # setwd("..")
 library(purrr)# for detect_indec
 library(dplyr)
+library(slam) # simple triplet matrix
 
 ################################################################################
 ### Preparing Data Set
@@ -104,8 +105,11 @@ dim(i_start_ordinal_groups)
 
 # Now, we compute r_1
 n <- dim(sort_dat)[1]
-r_1 <- matrix(rep(0, n * n), nrow = n)
+# r_1 <- matrix(rep(0, n * n), nrow = n)
 df_index <- 1
+r_1_i <- c()
+r_1_j <- c()
+r_1_v <- c()
 
 # parallel to the calculation of r_1 we calculate df_r1_values, which stores the
 # relation r_1, but which can then be sorted again and used for the calculation
@@ -119,6 +123,11 @@ colnames(df_r1_values) <- c("ID_lower", "ID_upper",
 
 start_time <- Sys.time()
 # We go through every observation
+# function_to_debug <- function(r_1_i, r_1_j, r_1_v, df_r1_values, sort_dat,
+                              # i_start_ordinal_groups){
+
+
+
 for (i in 1:n) {
   # Value comparing which value is above basis_value
   basis_value <- sort_dat[i, c("Gesundheit", "Ausbildung", "Einkommen")]
@@ -129,6 +138,7 @@ for (i in 1:n) {
   # base_entry corresponds to the
   base_entry <- 0
   index_below <- sort_dat[i, "ID"]
+
   # We go through every group of ordinal combinations which fulfill being larger
   # then basis value.
   for (j in larger_ordinal) {
@@ -147,37 +157,59 @@ for (i in 1:n) {
       # (in all components)
       index_above <- seq(i_start_ordinal_groups[j,  3] + first_income_above - 1,
                          i_start_ordinal_groups[j,  4], 1)
-      # R_1 is sorted by the order of the original saving of the data, thus we
-      # have to use the "ID" of sort_dat and not the index of sort_dat
-      r_1[i, c(sort_dat[index_above, "ID"])] <- 1
-      base_entry <- base_entry + length(index_above)
-      # The following part is only for saving df_r1_values, here we save all
-      # the combinations with value, ID and difference in the numeric part
-      for (index_above_df in index_above) {
-        df_r1_values[df_index, ] <-
-          c(index_below, sort_dat[index_above_df, "ID"],
-            basis_value[["Gesundheit"]], basis_value[["Ausbildung"]],
-            sort_dat[index_above_df, "Gesundheit"],
-            sort_dat[index_above_df, "Ausbildung"],
-            as.numeric(sort_dat[index_above_df, "Einkommen"]) -
-              as.numeric(basis_value[3]))
-        df_index <- df_index + 1
+      # deleting the reflexivity comparison
+      index_above <- index_above[!(sort_dat[index_above, "ID"] == index_below)]
+      # id_above <- setdiff(sort_dat[index_above, "ID"], index_below)
+
+      if (!(length(index_above) == 0)) {
+        # R_1 is sorted by the order of the original saving of the data, thus we
+        # have to use the "ID" of sort_dat and not the index of sort_dat
+        r_1_i <- c(r_1_i, rep(i, length(index_above)))
+        r_1_j <- c(r_1_j, sort_dat[index_above, "ID"])
+        r_1_v <- c(r_1_v, rep(1, length(index_above)))
+        # r_1[i, c(sort_dat[index_above, "ID"])] <- 1
+        base_entry <- base_entry + length(index_above)
+        # The following part is only for saving df_r1_values, here we save all
+        # the combinations with value, ID and difference in the numeric part
+        for (index_above_df in index_above) {
+          df_r1_values[df_index, ] <-
+            c(index_below, sort_dat[index_above_df, "ID"],
+              basis_value[["Gesundheit"]], basis_value[["Ausbildung"]],
+              sort_dat[index_above_df, "Gesundheit"],
+              sort_dat[index_above_df, "Ausbildung"],
+              as.numeric(sort_dat[index_above_df, "Einkommen"]) -
+                as.numeric(basis_value[3]))
+          df_index <- df_index + 1
+        }
       }
     }
   }
   # here we have a +1, because <= also counts itself and thus, at this position
   # here is a -1 in the entry
-  r_1[i, index_below] <- -base_entry + 1
+  if (!(base_entry == 0)) {
+    r_1_i <- c(r_1_i, i)
+    r_1_j <- c(r_1_j, index_below)
+    r_1_v <- c(r_1_v, -base_entry)
+    # r_1[i, index_below] <- -base_entry + 1
+  }
+
 }
+r_1 <- slam::simple_triplet_matrix(r_1_i, r_1_j, r_1_v)
+
+# return(list(r_1_i, r_1_j, r_1_v))
+# } # bis hier
+
+
 end_time <- Sys.time()
 duration_time <- end_time - start_time
 duration_time # Time difference of 4.44551 secs
 
-r_1
-rowSums(r_1)
+# r_1
+as.matrix(r_1)
+rowSums(as.matrix(r_1))
 head(df_r1_values)
 dim(df_r1_values)
-which(rowSums(abs(r_1)) == 0)
+which(rowSums(abs(as.matrix(r_1))) == 0)
 
 
 ### Berechnung von R2
@@ -244,6 +276,11 @@ head(i_df_ordinal_groups)
 # lies above
 m <- dim(sort_df_r1)[1]
 r_2 <- matrix(rep(0, m*n), nrow = m)
+r_2_i <- rep(NA,  dim(sort_df_r1)[1] * dim(sort_df_r1)[1] * 4)
+r_2_j <- rep(NA,  dim(sort_df_r1)[1] * dim(sort_df_r1)[1] * 4)
+r_2_v <- rep(NA,  dim(sort_df_r1)[1] * dim(sort_df_r1)[1] * 4)
+i_row <- 1
+i_saving <- 1
 
 start_time <- Sys.time()
 # We go through every existing relation in r_1 which is given by sort_df_r1
@@ -252,6 +289,7 @@ for (i in 1:dim(sort_df_r1)[1]) { # DAS HIER KANN MAN GUT PARALLELISIERN
   basis_value <- sort_df_r1[i, c("Gesundheit_lower", "Ausbildung_lower",
                                  "Gesundheit_upper", "Ausbildung_upper",
                                  "difference_numeric")]
+  print(paste0("Bin jetzt bei i", i))
   basis_value_id <- sort_df_r1[i, c("ID_lower", "ID_upper")]
   larger_ordinal <- Reduce(intersect,
     list(which(i_df_ordinal_groups[, 1] >= basis_value[1, 1]),
@@ -259,7 +297,7 @@ for (i in 1:dim(sort_df_r1)[1]) { # DAS HIER KANN MAN GUT PARALLELISIERN
          which(i_df_ordinal_groups[, 3] <= basis_value[1, 3]),
          which(i_df_ordinal_groups[, 4] <= basis_value[1, 4])))
   # since reflexivity is given larger_ordinal is never empty
-  below_entry <- 0
+  # below_entry <- 0
   for (j in larger_ordinal) {
     difference_drueber <-
       purrr::detect_index(sort_df_r1[seq(from = i_df_ordinal_groups[j, "from"],
@@ -273,17 +311,77 @@ for (i in 1:dim(sort_df_r1)[1]) { # DAS HIER KANN MAN GUT PARALLELISIERN
                          i_df_ordinal_groups[j,  "to"],
                          1)
 
+
       # delete the relation with itself
       delete_reflexiv <- intersect(which(sort_df_r1[index_above, 1] == basis_value_id[["ID_lower"]]),
                                    which(sort_df_r1[index_above, 2] == basis_value_id[["ID_upper"]]))
-      index_above <- index_above[-delete_reflexiv]
+      if (!(length(delete_reflexiv) == 0)) {
+        index_above <- index_above[-delete_reflexiv]
+      }
+
 
       # ACHTUNG HIER GIBT ES DERZEIT AUCH EIN PROBLEM MIT DUPLIKATEN
       # DIE EINTRÄGE ERGEBEN DANN ÜBERHAUPT KEINEN SINN MEHR
       if (!(length(index_above) == 0)) {
-        r_2[i, sort_df_r1[index_above, 1]] <- 1
-        r_2[i, sort_df_r1[index_above, 2]] <- 1
-        below_entry <- below_entry + length(length(index_above))
+        for (k in index_above) {
+          if (sort_df_r1[k, 1] == basis_value_id[["ID_lower"]]) {
+            # r_2_i <- c(r_2_i, rep(i_row, 2))
+            # r_2_j <- c(r_2_j, c(sort_df_r1[k, 2], basis_value_id[["ID_upper"]]))
+            # r_2_v <- c(r_2_v, c(1, -1))
+            r_2_i[seq(i_saving, i_saving + 1)] <- c(i_row, i_row)
+            r_2_j[seq(i_saving, i_saving + 1)] <- c(sort_df_r1[k, 2], basis_value_id[["ID_upper"]])
+            r_2_v[seq(i_saving, i_saving + 1)] <- c(1, -1)
+            i_saving <- i_saving + 2
+            # tt <- 1
+          } else if (sort_df_r1[k, 2] == basis_value_id[["ID_upper"]]) {
+            # r_2_i <- c(r_2_i, rep(i_row, 2))
+            # r_2_j <- c(r_2_j, c(sort_df_r1[k, 1], basis_value_id[["ID_lower"]]))
+            # r_2_v <- c(r_2_v, c(-1, 1))
+            r_2_i[seq(i_saving, i_saving + 1)] <- c(i_row, i_row)
+            r_2_j[seq(i_saving, i_saving + 1)] <-  c(sort_df_r1[k, 1], basis_value_id[["ID_lower"]])
+            r_2_v[seq(i_saving, i_saving + 1)] <- c(-1, 1)
+            i_saving <- i_saving + 2
+            # tt <- 1
+          } else if (sort_df_r1[k, 1] == basis_value_id[["ID_upper"]]) {
+            # r_2_i <- c(r_2_i, rep(i_row, 3))
+            # r_2_j <- c(r_2_j, c(sort_df_r1[k, 1], sort_df_r1[k, 2],
+            #                     basis_value_id[["ID_lower"]]))
+            # r_2_v <- c(r_2_v, c(2,-1,-1))
+            r_2_i[seq(i_saving, i_saving + 2)] <- c(i_row, i_row, i_row)
+            r_2_j[seq(i_saving, i_saving + 2)] <-  c(sort_df_r1[k, 1], sort_df_r1[k, 2],
+                                                     basis_value_id[["ID_lower"]])
+            r_2_v[seq(i_saving, i_saving + 2)] <- c(2,-1,-1)
+            i_saving <- i_saving + 3
+            # tt <- 1
+          } else if (sort_df_r1[k, 2] == basis_value_id[["ID_lower"]]) {
+            # r_2_i <- c(r_2_i, rep(i_row, 3))
+            # r_2_j <- c(r_2_j, c(sort_df_r1[k, 1], sort_df_r1[k, 2],
+            #                     basis_value_id[["ID_upper"]]))
+            # r_2_v <- c(r_2_v, c(1,-2,1))
+            r_2_i[seq(i_saving, i_saving + 2)] <- c(i_row, i_row, i_row)
+            r_2_j[seq(i_saving, i_saving + 2)] <-  c(sort_df_r1[k, 1], sort_df_r1[k, 2],
+                                                     basis_value_id[["ID_upper"]])
+            r_2_v[seq(i_saving, i_saving + 2)] <- c(1,-2,1)
+            i_saving <- i_saving + 3
+            # tt <- 1
+          } else {
+            # r_2_i <- c(r_2_i, rep(i_row, 4))
+            # r_2_j <- c(r_2_j, c(sort_df_r1[k, 1], sort_df_r1[k, 2],
+            #                     basis_value_id[["ID_lower"]], basis_value_id[["ID_upper"]]))
+            # r_2_v <- c(r_2_v, c(1,1,-1,-1))
+            r_2_i[seq(i_saving, i_saving + 3)] <- c(i_row, i_row, i_row, i_row)
+            r_2_j[seq(i_saving, i_saving + 3)] <-  c(sort_df_r1[k, 1], sort_df_r1[k, 2],
+                                                     basis_value_id[["ID_lower"]], basis_value_id[["ID_upper"]])
+            r_2_v[seq(i_saving, i_saving + 3)] <- c(1,1,-1,-1)
+            i_saving <- i_saving + 4
+            # tt <- 1
+          }
+
+          i_row <- i_row + 1
+        }
+        # r_2[i, sort_df_r1[index_above, 1]] <- 1
+        # r_2[i, sort_df_r1[index_above, 2]] <- 1
+        # below_entry <- below_entry + length(length(index_above))
       }
 
     }
@@ -291,17 +389,21 @@ for (i in 1:dim(sort_df_r1)[1]) { # DAS HIER KANN MAN GUT PARALLELISIERN
   # TODO
   # STOP: DA STIMMT WAS NICHT - Frage Christoph unten
   # ACHTUNG reflexiv
-  r_2[i, basis_value_id[["ID_lower"]]] <- -(below_entry/2)
-  r_2[i, basis_value_id[["ID_upper"]]] <- -(below_entry/2)
+  # r_2[i, basis_value_id[["ID_lower"]]] <- -(below_entry/2)
+  # r_2[i, basis_value_id[["ID_upper"]]] <- -(below_entry/2)
 }
+
 end_time <- Sys.time()
 duration_time <- end_time - start_time
 duration_time
 head(r_2)
+r_2 <- slam::simple_triplet_matrix(r_2_i, r_2_j, r_2_v)
+# as.matrix(r_2)
+
 r_2
 length(which(rowSums(abs(r_2)) == 0))
 dim(r_2)
-rowSums(r_2)
+rowSums(as.matrix(r_2))
 
 
 ################################################################################

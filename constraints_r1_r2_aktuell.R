@@ -206,6 +206,7 @@ compute_constraints_r2 <- function(data_set, df_r1_values) {
   later_delta <-  rep(NA,  dim(sort_df_r1)[1] * dim(sort_df_r1)[1] * 4)
   i_row <- 1
   i_saving <- 1
+  delta_saving <- 1
 
   start_time <- Sys.time()
   # We go through every existing relation in r_1 which is given by sort_df_r1
@@ -255,7 +256,8 @@ compute_constraints_r2 <- function(data_set, df_r1_values) {
               r_2_v[seq(i_saving, i_saving + 2)] <- c(2,-1,-1)
               i_saving <- i_saving + 3
               if (all(basis_value == sort_df_r1[k, c(3,4,5,6,7)])) {
-                later_delta[i_saving] <- i_row
+                later_delta[delta_saving] <- i_row
+                delta_saving <- delta_saving + 1
               }
               i_row <- i_row + 1
 
@@ -266,7 +268,8 @@ compute_constraints_r2 <- function(data_set, df_r1_values) {
               r_2_v[seq(i_saving, i_saving + 2)] <- c(1,-2,1)
               i_saving <- i_saving + 3
               if (all(basis_value == sort_df_r1[k, c(3,4,5,6,7)])) {
-                later_delta[i_saving] <- i_row
+                later_delta[delta_saving] <- i_row
+                delta_saving <- delta_saving + 1
               }
               i_row <- i_row + 1
 
@@ -277,7 +280,8 @@ compute_constraints_r2 <- function(data_set, df_r1_values) {
               r_2_v[seq(i_saving, i_saving + 3)] <- c(1,-1,-1,1)
               i_saving <- i_saving + 4
               if (all(basis_value == sort_df_r1[k, c(3,4,5,6,7)])) {
-                later_delta[i_saving] <- i_row
+                later_delta[delta_saving] <- i_row
+                delta_saving <- delta_saving + 1
               }
               i_row <- i_row + 1
 

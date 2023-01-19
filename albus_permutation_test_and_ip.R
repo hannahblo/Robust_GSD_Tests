@@ -6,6 +6,9 @@ library(dplyr) # for group_by
 library(slam) # simple triplet matrix
 library(gurobi) # solving LP
 library(parallel) # for mclapply (only works for linux in a parallel version)
+library(doParallel)
+# for informations about parrallelise the code:
+# https://waterprogramming.wordpress.com/2020/03/16/parallel-processing-with-r-on-windows/
 # setwd(TODO)
 source("constraints_r1_r2_aktuell.R") # contains the functions compute_constraints...
 
@@ -19,34 +22,74 @@ source("constraints_r1_r2_aktuell.R") # contains the functions compute_constrain
 # one could also look at V418
 # "V2" is the identification number of the respondent.
 
-dat_read <- foreign::read.spss("ZA5240_v2-1-0.sav", to.data.frame = TRUE)
-dat <- dat_read[which(dat_read$V5 == "SPLIT B: F75B"),
-                c("V226", "V102", "V417", "V81", "V7")]
+dat_read <- foreign::read.spss("ZA5240_v2-1-0.sav", to.data.frame = TRUE,
+                               sep = ",", dec = ".")
+dat_convert_values <- dat_read[, c("V5", "V226", "V102", "V417", "V81", "V7")]
+colnames(dat_convert_values) <- c("Split", "Gesundheit", "Ausbildung",
+                                  "Einkommen", "Geschlecht", "O_W_Deutschland")
 
-colnames(dat) <- c("Gesundheit", "Ausbildung", "Einkommen", "Geschlecht",
-                   "O_W_Deutschland")
-dat[["Gesundheit"]] <- 7 - as.numeric(dat[["Gesundheit"]])
-sapply(dat, function(y) sum(length(which(is.na(y))))) # number of nas per column
-dat <- dat[rowSums(is.na(dat)) == 0,] # deleted NAs
-dat <- dat[which(dat$O_W_Deutschland == "NEUE BUNDESLAENDER"), ]
+# deleting NAs
+# here we are deleting the entry with minimal "Einkommen" value 37. We have to
+# delete the nas bevor considering the rest, because else NA would be added as
+# a further factor in as.order() later
+non_na <- c()
+for (i in seq(1, dim(dat_convert_values)[1])) {
+  if (!any(is.na(dat_convert_values[i,]))) {
+    non_na <- c(non_na, i)
+  }
+}
+dat_convert_values <- dat_convert_values[non_na, ]
 
-dat[["Gesundheit"]] <- as.ordered(as.numeric(dat[["Gesundheit"]]))
-dat[["Ausbildung"]] <- as.ordered(as.numeric(dat[["Ausbildung"]]))
-dat[["Einkommen"]] <- as.numeric(dat[["Einkommen"]])
+# Converting the values into numeric and order modes
+# "Einkommen": compare with page 492 of codebook, variable V417
+# "Gesundheit": compare with page 251 of codebook, variable V226
+# "Ausbildung": compare with page 105 of codebook, variable V102
 
-# Duplicates
+# dat_convert_values[["Einkommen"]][seq(1,10)]
+# levels(dat_convert_values[["Einkommen"]])
+# as.numeric(as.character(dat_convert_values[["Einkommen"]]))[seq(1,10)]
+dat_convert_values[["Einkommen"]] <- as.numeric(as.character(
+  dat_convert_values[["Einkommen"]]))
+
+# dat_convert_values[["Ausbildung"]][seq(1,10)]
+# levels(dat_convert_values[["Ausbildung"]])
+# as.ordered(as.numeric(dat_convert_values[["Ausbildung"]]))[seq(1,10)]
+dat_convert_values[["Ausbildung"]] <- as.ordered(as.numeric(
+  dat_convert_values[["Ausbildung"]]))
+
+# dat_convert_values[["Gesundheit"]][seq(1,10)]
+# levels(dat_convert_values[["Gesundheit"]])
+# as.ordered(as.numeric(dat_convert_values[["Gesundheit"]]))[seq(1,10)]
+# # Note that here 1 is the best and 6 the worst health status --> needs to be
+# # switched --> (7 -)
+dat_convert_values[["Gesundheit"]] <- as.ordered( 7 - as.numeric(
+  dat_convert_values[["Gesundheit"]]))
+dat_convert_values[["Gesundheit"]][seq(1,10)]
+
+# We only consider "Split B: F75B" and the population of east Germany
+dat_convert_values <- dat_convert_values[which(
+  dat_convert_values[["Split"]] == "SPLIT B: F75B"), ]
+
+
+dat_convert_values <- dat_convert_values[which(
+  dat_convert_values[["O_W_Deutschland"]] == "NEUE BUNDESLAENDER"), ]
+
+dat <- dat_convert_values[ , c("Gesundheit",  "Ausbildung", "Einkommen",
+                               "Geschlecht")]
+
+
+
+# Duplicate handling
 dat_dup_divi_sex <- dat %>% group_by_all() %>% count()
 dat_dup_without_sex <- duplicated(dat_dup_divi_sex[, seq(1,3)])
-# dat_dup_divi_sex[dat_dup_without_sex, ]
-# sum(!dat_dup_without_sex)
 
 data_female <- dat_dup_divi_sex[which(dat_dup_divi_sex$Geschlecht == "WEIBLICH"),
-                                c(1,2,3, 6)]
+                                c(1, 2, 3, 5)] # deleting "Geschlect" column
 data_female <- matrix(as.numeric(as.matrix(data_female)), ncol = 4)
 colnames(data_female) <-  c("ordinal_1", "ordinal_2", "numeric", "dup_female")
 
 data_male <- dat_dup_divi_sex[which(dat_dup_divi_sex$Geschlecht == "MAENNLICH"),
-                              c(1,2,3, 6)]
+                              c(1, 2, 3, 5)]  # deleting "Geschlect" column
 data_male <- matrix(as.numeric(as.matrix(data_male)), ncol = 4)
 colnames(data_male) <-  c("ordinal_1", "ordinal_2", "numeric", "dup_male")
 
@@ -56,35 +99,54 @@ dat_final <- merge(x = data_female, y = data_male,
 dat_final[is.na(dat_final)] <- 0
 dat_final$dup_all <- dat_final$dup_female + dat_final$dup_male
 dat_final$ID <- seq(1:dim(dat_final)[1])
-View(dat_final)
-dim(dat_final)
 
-# Add minimal and maximal at the bottom of the matrix
+
+# View(dat_final)
+# dim(dat_final)
+# min(dat_final$numeric)
+# max(dat_final$numeric)
+
+index_max <- which(dat_final$numeric == max(dat_final$numeric))
+# dat_final[index_max, ]
+index_min <- which(dat_final$numeric == min(dat_final$numeric))
+# dat_final[index_min, ]
+
+# # Add minimal and maximal at the bottom of the matrix
 dat_final[dim(dat_final)[1] + 1, ] <- c(min(dat_final$ordinal_1),
                                         min(dat_final$ordinal_2),
-                                        min(dat_final$numeric) - 1,
-                                        0, 0, 1,
+                                        dat_final[index_min, 3],
+                                        0, 0, 0,
                                         max(dat_final$ID) + 1)
 dat_final[dim(dat_final)[1] + 1, ] <- c(max(dat_final$ordinal_1),
                                         max(dat_final$ordinal_2),
-                                        max(dat_final$numeric) + 1,
-                                        0, 0, 1,
+                                        dat_final[index_max, 3],
+                                        0, 0, 0,
                                         max(dat_final$ID) + 1)
 
-
-
-
-
+rm(dat_read)
+rm(dat)
+rm(dat_convert_values)
+rm(dat_dup_divi_sex)
+rm(dat_dup_without_sex)
+rm(data_female)
+rm(data_male)
+rm(i)
+rm(index_max)
+rm(index_min)
+rm(non_na)
 ################################################################################
-# Different Data Set Situations to go on
-# Important: Use only one dat_set to go on!
+# Data Set: 100 womand and 100 man randomly sampled
+# (and a small test data set --> see example 2)
 ################################################################################
-## Entire Data Set
-dat_set <- dat_final
+# # Test data set of example is given by
+# set.seed(48)
+# size_f_m <- 7
+# dat_set <-  dat_set[c(8,9,11,12, 15, 16), ]
+# dat_set$ID <- seq(1, dim(dat_set)[1])
 
 
-## 100 Woman and 100 Man (randomly sampled)
-set.seed(148)
+set.seed(48)
+size_f_m <- 100
 dat_set <- dat_final
 cumsum_female <- cumsum(dat_set$dup_female)
 cumsum_male <- cumsum(dat_set$dup_male)
@@ -94,16 +156,14 @@ dat_set$dup_female <- 0
 dat_set$dup_male <- 0
 
 # Compute a random sample
-woman_sample <- sample(seq(0, sum_female), size = 100, replace = FALSE)
-index_sample <- 1
+woman_sample <- sample(seq(0, sum_female), size = size_f_m, replace = FALSE)
 for (i in woman_sample) {
   index_sample_value <- which.max(cumsum_female >= i)
   dat_set$dup_female[index_sample_value] <-
     dat_set$dup_female[index_sample_value] + 1
 }
 
-man_sample <- sample(seq(0, sum_male), size = 100, replace = FALSE)
-index_sample <- 1
+man_sample <- sample(seq(0, sum_male), size = size_f_m, replace = FALSE)
 for (i in man_sample) {
   index_sample_value <- which.max(cumsum_male >= i)
   dat_set$dup_male[index_sample_value] <-
@@ -119,104 +179,66 @@ dat_set <- dat_set[-which(dat_set$dup_all == 0), ]
 dat_set[c(dim(dat_set)[1] + 1, dim(dat_set)[1] + 2), ] <-
   dat_final[c(dim(dat_final)[1] - 1, dim(dat_final)[1]), ]
 dat_set$ID <- seq(1, dim(dat_set)[1])
-View(dat_set)
-dim(dat_set)
-sum(dat_set$dup_all)
 
 
-## Short Test Version
-dat_set <- dat_final[c(5, 10, 150, 24, 50, 88, 182), ]
-dat_set$ID <- seq(1, dim(dat_set)[2])
+# View(dat_set)
+# dim(dat_set)
+# sum(dat_set$dup_all)
+# dat_set$ID <- seq(1, dim(dat_set)[1])
+
+
+
+rm(cumsum_female)
+rm(cumsum_male)
+rm(sum_female)
+rm(sum_male)
+rm(woman_sample)
+rm(index_sample_value)
+rm(man_sample)
+rm(i)
+rm(size_f_m)
+
 
 ################################################################################
-# Information about Computation Times etc w.r.t. the above data sets
+# Information about Computation Times etc w.r.t. the above data set (seed 48)
 ################################################################################
-## Entire Data Set
 
 # constraint_r1_values
-# computation time:
-# disk space:
-# dimensions:
+# computation time: Time difference of 4.239958 secs
+# disk space: 831.8 kB
+# dimensions: 8642    7
+# number cores: 1
 
 # constraint_r2_values
-# computation time:
-# disk space:
-# dimensions
+# computation time: Time difference of 34.27036 mins
+# disk space: 680.9 MB
+# dimensions: 7103114     173
+# number cores: 1
 
 # xi
+# computation time: Time difference of 4.385978 mins
+#                   (includes also simple_triplet_matrix construction)
+# xi value: [1] 0.000121981
+# number cores: 1
+
+# computation test statistic for observed data (d_observed)
+# computation time: Time difference of 4.909585 mins
+# values: $d_nip_nreg: -0.104995,  $d_nip: -0.105,  $d_nreg: -0.0939451,
+#         $d: -0.09395
+# number cores: 1
+
+# 1 runs of the permutation tests (permutation_test_result)
+# computation time: Time difference of 5.522952 mins
+# number cores: 1 (without externel permutation -> quess that gurobi does something)
+
+# 2 runs of the permutation tests (permutation_test_result)
+# computation time: Time difference of 9.865825 mins
+# number cores: 1 (without externel permutation -> quess that gurobi does something)
+
+
+# 1000 runs of the permutation tests (permutation_test_result)
 # computation time:
-# disk space:
-
-# 50 runs of the permutation tests
-# computation time:
-# disk space:
-
-
-
-
-
-## 100 Woman and 100 Man (randomly sampled)
-
-# General Notes: Problem by running this test in parallel: Not enough disk space?
-# --> Maybe presolving could help a bit
-# Further, I have the feeling that gurobi is already parallising. Thus, If I add
-#  mclapply it does not really help...
-
-# constraint_r1_values
-# computation time: Time difference of 12.02571 secs
-# disk space: 732.2 kB
-# dimensions: 7604  168
-# Saved: in computation_result_100
-
-# constraint_r2_values
-# computation time: Time difference of 47.26213 mins
-# disk space: 5005.5 MB
-# dimensions: 5223397     168
-# Saved: in computation_result_100
-
-# xi
-# computation time: Time difference of 2.632521 mins
-# value: 0.002463054
-# Saved: in computation_result_100
-
-# 20 runs of the permutation test (return entire gurobi object)
-# Problem: only two kernels produced results. I guess that this is due to disk
-#   space problem as this does not occur when a smaller sample is used. Further
-#   I could increase the number of kernel used by reducing the disk space of
-#   the input
-# computation time: Time difference of 12.39729 mins
-# values: Hier wurde das gesamte Gurobi Object zurück gegeben, d.h. die Speicher
-#    zeit ist deutlich länger als später, wenn nur der Wert zurück gegeben wird
-#    Nur zwei Kerne haben funktioniert -> daher oft nur NULL als Rückgabe
-# used cores:6 (only 2 worked properly the rest returned NULL)
-# Warning message:
-# In mclapply(X = seq(1, number_iterations), FUN = compute_d_permuted,  :
-#               scheduled cores 1, 4, 5, 6 did not deliver results, all values of the jobs will be affected
-# Saved: in computation_result_100 -> permutation_test_100_20_6.rds
-
-# 20 runs of the permutation tests (return only value)
-# computation time: Time difference of 12.56364 mins
-# values: only two kernels worked -> 2/3 of the values are NULL
-# used cores: 6 (only 2 worked properly the rest returned NULL)
-# Warning message:
-#   In mclapply(X = seq(1, number_iterations), FUN = compute_d_permuted,  :
-#                 scheduled cores 3, 4, 5, 6 did not deliver results, all values of the jobs will be affected
-# Saved: in computation_result_100 -> permutation_test_100_20_6_only_result.rds
-
-# 20 runs of the permutation tests (return only value)
-# computation time: Time difference of 30.66759 mins
-# used cores: 1
-# Saved: in computation_result_100 -> permutation_test_100_20_1_only_result.rds
-# Note: Irgendwie verwendet er immer zweimal den selben seed. Das sollte aber gut
-#   zu ändern sein :)
-
-# 20 runs of the permutation tests (return entire gurobi object)
-# computation time: Time difference of 30.83245 mins
-# used cores: 1
-# Saved: in computation_result_100 -> permutation_test_100_20_1.rds
-# Note: Irgendwie verwendet er immer zweimal den selben seed. Das sollte aber gut
-#   zu ändern sein :)
-
+# number cores:
 
 ################################################################################
 # Compute constraint matrices
@@ -242,14 +264,18 @@ total_time_r2 <- Sys.time() - start_time_r2
 #                                               constraint_r1_values$r_1_j,
 #                                               constraint_r1_values$r_1_v)
 # constraints_r2 <- slam::simple_triplet_matrix(constraint_r2_values$r_2_i,
-                                              # constraint_r2_values$r_2_j,
-                                              # constraint_r2_values$r_2_v)
+# constraint_r2_values$r_2_j,
+# constraint_r2_values$r_2_v)
+#
+# as.matrix(constraints_r2)
+# as.matrix(constraints_r1)
+# constraint_r2_values$xi
+# constraint_r1_values$df_r1_values
 
 
 
 
-
-# (!) Note that the file name must be changed accoring to the used data set
+# (!) Note that the file name must be changed according to the used data set
 # .._100 if the data set with 100 sample of woman / man is used
 # .._all if the entire sample is used
 
@@ -258,33 +284,42 @@ total_time_r2 <- Sys.time() - start_time_r2
 # .._100 if the data set with 100 sample of woman / man is used
 # .._all if the entire sample is used
 
-setwd()
-# Save objects to a file
-saveRDS(constraint_r1_values, file = "constraint_r1_values_100.rds")
-saveRDS(constraint_r2_values, file = "constraint_r2_values_100.rds")
-# Restore the objects
-constraint_r1_values <- readRDS("constraint_r1_values_100.rds")
-constraint_r2_values <- readRDS("constraint_r2_values_100.rds")
+# setwd()
+# # Save objects to a file
+# saveRDS(constraint_r1_values, file = "constraint_r1_values_100_seed_48.rds")
+# saveRDS(constraint_r2_values, file = "constraint_r2_values_100_seed_48.rds")
+# # Restore the objects
+# constraint_r1_values <- readRDS("constraint_r1_values_100_seed_48.rds")
+# constraint_r2_values <- readRDS("constraint_r2_values_100_seed_48.rds")
 
 dim_r2 <- c(max(constraint_r2_values$r_2_i), dim(dat_set)[1])
 dim_r1 <- c(max(constraint_r1_values$r_1_i), dim(dat_set)[1])
 
 
-
+rm(start_time_r1)
+rm(total_time_r1)
+rm(start_time_r2)
+rm(total_time_r2)
 ################################################################################
 # Compute xi
 # In paper: See Chapter 5.3
-# Informations about gurobi (page 643ff): https://www.gurobi.com/wp-content/plugins/hd_documentations/documentation/9.0/refman.pdf
+# Informations about gurobi (page 643ff):
+# https://www.gurobi.com/wp-content/plugins/hd_documentations/documentation/9.0/refman.pdf
 ################################################################################
-
-xi_r2_constraint <- rep(0, dim_r2[1])
-if (!is.na(constraint_r2_values$xi)) {
-  xi_r2_constraint[constraint_r2_values$xi] <- -1
+xi_r2_constraint <- rep(-1, dim_r2[1])
+gurobi_r2_sense <-  rep(">",  dim_r2[1])
+if (!any(is.na(constraint_r2_values$xi))) {
+  xi_r2_constraint[constraint_r2_values$xi] <- 0
+  gurobi_r2_sense[constraint_r2_values$xi] <- "="
 }
+gurobi_sense <- c(rep(">", dim_r1[1]), gurobi_r2_sense)
 
 # simple_triplet matrix i=row, j=column, v=value
+
 xi_A_r_i <- c(constraint_r1_values$r_1_i, seq(1, dim_r1[1]), # r_1 part
               constraint_r2_values$r_2_i + dim_r1[1], seq(dim_r1[1] + 1, dim_r1[1] + dim_r2[1])) # r_2 part
+
+
 
 xi_A_r_j <- c(constraint_r1_values$r_1_j, rep(dim_r1[2] + 1, dim_r1[1]),
              constraint_r2_values$r_2_j, rep(dim_r2[2] + 1, dim_r2[1]))
@@ -292,40 +327,56 @@ xi_A_r_j <- c(constraint_r1_values$r_1_j, rep(dim_r1[2] + 1, dim_r1[1]),
 xi_A_r_v <- c(constraint_r1_values$r_1_v, rep(-1, dim_r1[1]),
               constraint_r2_values$r_2_v, xi_r2_constraint)
 
+# A <- slam::simple_triplet_matrix(xi_A_r_i, xi_A_r_j, xi_A_r_v)
+
 
 # Note that construction the simple_triplet_matrix needs some minutes
+# set min and max to default zero and one -> by lower and upper bound constraints
 start_time_xi <- Sys.time()
 gurobi_model_xi <- list()
 gurobi_model_xi$A <- slam::simple_triplet_matrix(xi_A_r_i, xi_A_r_j, xi_A_r_v)
 gurobi_model_xi$rhs <- rep(0, max(xi_A_r_i))
-gurobi_model_xi$lb <- rep(0, dim_r1[2] + 1)
-gurobi_model_xi$ub <- rep(1, dim_r1[2] + 1)
+gurobi_model_xi$lb <- c(rep(0, dim_r1[2] - 1), 1, 0)
+gurobi_model_xi$ub <- c(rep(1, dim_r1[2] - 2), 0, 1, 1)
 gurobi_model_xi$vtypes <- c(rep("C", dim_r1[2] + 1))
 
 gurobi_model_xi$obj <- c(rep(0, dim_r1[2]), 1)
 gurobi_model_xi$modelsense <- "max"
-gurobi_model_xi$sense <- rep(">",  max(xi_A_r_i))
+gurobi_model_xi$sense <- gurobi_sense
+
+# maximales Element auf 1 und minimales Element auf 0 -> am besten mit lower und upper bound
+# minimales und maximales element werden fixiert die WErte
 
 
 
 xi_gurobi <- gurobi::gurobi(gurobi_model_xi)
 xi <- xi_gurobi$objval
+xi
 total_time_xi <- Sys.time() - start_time_xi
 
 
-# Save object to a file
-saveRDS(xi_gurobi, file = "xi_gurobi_100.rds")
-# Restore the object
-xi_gurobi <- readRDS("xi_gurobi_100.rds")
-xi <- xi_gurobi$objval
+# # Save object to a file
+# saveRDS(xi_gurobi, file = "xi_gurobi_100.rds")
+# # Restore the object
+# xi_gurobi <- readRDS("xi_gurobi_100.rds")
+# xi <- xi_gurobi$objval
 
+rm(gurobi_model_xi)
+rm(xi_A_r_i)
+rm(xi_A_r_j)
+rm(xi_A_r_v)
+rm(xi_r2_constraint)
+rm(start_time_xi)
+rm(total_time_xi)
+rm(xi_gurobi)
 
 ################################################################################
 # Compute Permutation test
 # In paper: See Chapter 5.2
 ################################################################################
 all_obs <- sum(dat_set$dup_all)
-eps <- 0.6
+eps <- 0.0001 # 0.0001 -> set eps so small such that eps*xi < 10^{-5}
+gamma <- 0.01  #1 / 200 # 10 / 200, 20 / 200
 
 
 # Constraint Matrix in the LP to compute p
@@ -343,102 +394,235 @@ permu_A_r_v <- c(constraint_r1_values$r_1_v,
 permu_A <- slam::simple_triplet_matrix(permu_A_r_i, permu_A_r_j, permu_A_r_v)
 
 # The right-hand side vector for the linear constraints
-delta_r2_constraint <- rep(0, dim_r2[1])
-if (!is.na(constraint_r2_values$xi)) {
-  delta_r2_constraint[delta_r2_constraint$xi] <- xi * eps
+eps_xi_r2_constraint <- rep(xi * eps, dim_r2[1])
+if (!any(is.na(constraint_r2_values$xi))) {
+  eps_xi_r2_constraint[constraint_r2_values$xi] <- 0
 }
-permu_rhs <- c(rep(xi * eps, dim_r1[1]), delta_r2_constraint)
+permu_rhs <- c(rep(xi * eps, dim_r1[1]), eps_xi_r2_constraint)
 
-# Gurobi Model
+# Gurobi Model (no regularization)
+# set minimales and maximales Element to 0 and 1 resp (using lower and upper bounds)
 gurobi_model_permu <- list()
 gurobi_model_permu$A <- permu_A
 gurobi_model_permu$rhs <- permu_rhs
-gurobi_model_permu$lb <- rep(0, dim_r1[2])
-gurobi_model_permu$ub <- rep(1, dim_r1[2])
+gurobi_model_permu$lb <- c(rep(0, dim_r1[2] - 1), 1)
+gurobi_model_permu$ub <- c(rep(1, dim_r1[2] - 2), 0, 1)
 gurobi_model_permu$vtypes <- c(rep("C", dim_r1[2]))
 
-gurobi_model_permu$modelsense <- "max"
-gurobi_model_permu$sense <- rep(">",  dim(permu_A)[1])
+gurobi_model_permu$modelsense <- "min"
+gurobi_model_permu$sense <- gurobi_sense
+
+
+# Gurobi Model (regularization)
+# set minimales and maximales Element to 0 and 1 resp (using lower and upper bounds)
+gurobi_model_permu_regul <- gurobi_model_permu
+gurobi_model_permu_regul$rhs <- rep(0, dim_r1[1] + dim_r2[1])
+
+# Reduce dat_set only to the part needed in the permutation test
+dat_set_permu <- dat_set[, c("dup_female", "dup_male", "dup_all")]
+
 
 # Function to compute d based on one permutation
-compute_d_permuted <- function(index,
-                               dat_set_distr_fm, gurobi_model_permu, all_obs) {
+compute_d_permuted <- function(index, gamma,
+                               dat_set_permu,
+                               gurobi_model_permu,
+                               gurobi_model_permu_regul,
+                               all_obs,
+                               permutated_f_m = TRUE) {
 
   print(paste0("Bin jetzt bei Permutationsanzahl ", index))
 
   # Compute a random sample
-  woman_sample <- sample(c(0,1), size = all_obs, replace = TRUE)
-  dat_set_permu <- dat_set_distr_fm
-  dat_set_permu$dup_female <- 0
+  if (permutated_f_m) {
+    woman_sample_index <- sample(seq(1, all_obs),
+                                 size = sum(dat_set_permu$dup_female),
+                                 replace = FALSE)
+    woman_sample <- rep(0, all_obs)
+    woman_sample[woman_sample_index] <- 1
+    dat_set_permu <- dat_set_permu
+    dat_set_permu$dup_female <- 0
 
-  index_sample <- 1
-  for (i in 1:dim(dat_set_permu)[1]) {
-    # Beachte, dass für jedes i dat_set_permu$dup_all[i] >= 1 sein muss, da es
-    # mindestens eine Beobachtung gibt
-    woman_sample_i <- woman_sample[seq(index_sample,
-                                       index_sample + dat_set_permu$dup_all[i] - 1)]
-    dat_set_permu$dup_female <- sum(woman_sample_i)
+    index_sample <- 1
+    for (i in 1:(dim(dat_set_permu)[1] - 2)) {
+      # Beachte, dass für jedes i dat_set_permu$dup_all[i] >= 1 sein muss, da es
+      # mindestens eine Beobachtung gibt
+      woman_sample_i <- woman_sample[seq(index_sample,
+                                         index_sample + dat_set_permu$dup_all[i] - 1)]
+      dat_set_permu$dup_female[i] <- sum(woman_sample_i)
+      index_sample <- index_sample + dat_set_permu$dup_all[i]
+    }
+    # min und max never observed
+    dat_set_permu$dup_male <- dat_set_permu$dup_all - dat_set_permu$dup_female
+    dat_set_permu[c(dim(dat_set_permu)[1] - 1, dim(dat_set_permu)[1]), ] <- 0
   }
-  dat_set_permu$dup_male <- dat_set_permu$dup_all - dat_set_permu$dup_female
 
 
-
-  # Computing d(x,y) based on dat_set_permu (first set up gurobi model)
-  gurobi_model_permu_inner <- gurobi_model_permu
-  gurobi_model_permu_inner$obj <- (dat_set_permu$dup_female / all_obs) -
+  # Zielfunktion definieren
+  obj_nip <- (dat_set_permu$dup_female / all_obs) -
     (dat_set_permu$dup_male / all_obs)
 
-  permu_gurobi <- gurobi::gurobi(gurobi_model_permu_inner)
-  return(permu_gurobi$objval)
+  obj_pi_u <- (1 - gamma) * (dat_set_permu$dup_female / all_obs)
+  obj_pi_u[dim(dat_set_permu)[1]] <- gamma
+
+  obj_pi_l <- (1 - gamma) * (dat_set_permu$dup_male / all_obs)
+  obj_pi_l[dim(dat_set_permu)[1] - 1] <- gamma
+
+  obj_pi <- as.vector(obj_pi_u - obj_pi_l)
+
+  # storing return list
+  d_return <- list()
+  # Computing d(x,y) (no ip, no regularization)
+  g_model_nip_nreg <- gurobi_model_permu
+  g_model_nip_nreg$obj <- obj_nip
+  result_nip_nreg <- gurobi::gurobi(g_model_nip_nreg)
+  if (result_nip_nreg$status == "OPTIMAL") {
+    d_return$d_nip_nreg <- result_nip_nreg$objva
+  } else {
+    d_return$d_nip_nreg <- result_nip_nreg
+  }
+
+  # Computing d(x,y) (no ip, regularization)
+  g_model_nip <- gurobi_model_permu_regul
+  g_model_nip$obj <- (dat_set_permu$dup_female / all_obs) -
+    (dat_set_permu$dup_male / all_obs)
+  result_nip <- gurobi::gurobi(g_model_nip)
+  if (result_nip$status == "OPTIMAL") {
+    d_return$d_nip <- result_nip$objva
+  } else {
+    d_return$d_nip <- result_nip
+  }
+
+# Computing d(x,y) (ip, no regularization)
+  g_model_nreg <- gurobi_model_permu
+  g_model_nreg$obj <- obj_pi
+  result_nreg <- gurobi::gurobi(g_model_nreg)
+  if (result_nreg$status == "OPTIMAL") {
+    d_return$d_nreg <- result_nreg$objva
+  } else {
+    d_return$d_nreg <- result_nreg
+  }
+
+  # Computing d(x,y) (ip, regularization)
+  g_model <- gurobi_model_permu_regul
+  g_model$obj <- obj_pi
+  result <- gurobi::gurobi(g_model)
+  if (result$status == "OPTIMAL") {
+    d_return$d <- result$objva
+  } else {
+    d_return$d <- result
+  }
+
+  # Storing the results
+
+  return(d_return)
 }
 
+
+### Computation of the test statistic values based on the input
+start_time_d_obs  <- Sys.time()
+d_observed <- compute_d_permuted(1, gamma,
+                                 dat_set_permu,
+                                 gurobi_model_permu,
+                                 gurobi_model_permu_regul,
+                                 all_obs,
+                                 permutated_f_m = FALSE)
+total_time_d_obs <- Sys.time() - start_time_d_obs
+
+
+### Test statistic computation based on iteration_number permuted observations
 # Note that for a different number of cores it might be that the output is not
 # the same, even when seed is set correctly
-number_iterations <- 20
-dat_set_distr_fm <- dat_set[, c("dup_female", "dup_male", "dup_all")]
+
+iteration_number <- 2
+iteration_seq <- seq(1, iteration_number)
+no_cores <- parallel::detectCores(logical = TRUE)
+cl <- parallel::makeCluster(no_cores - 6)
+doParallel::registerDoParallel(cl)
+clusterExport(cl,
+              varlist = c("compute_d_permuted","gamma", "dat_set_permu",
+                       "gurobi_model_permu", "gurobi_model_permu_regul",
+                       "all_obs"),
+              envir = environment())
+clusterEvalQ(cl,  library(gurobi))
+
 RNGkind("L'Ecuyer-CMRG")
-set.seed <- 1986
-start_time_permu <- Sys.time()
-permutation_test <- mclapply(X = seq(1, number_iterations),
-                           FUN = compute_d_permuted,
-                           dat_set_distr_fm = dat_set_distr_fm,
+set.seed(858)
+s <- .Random.seed
+clusterSetRNGStream(cl = cl, iseed = s)
+
+start_time <- Sys.time()
+permutation_test_result <- parLapply(cl, iteration_seq, fun = function(x) {
+    compute_d_permuted(x, gamma,
+                       dat_set_permu,
+                       gurobi_model_permu,
+                       gurobi_model_permu_regul,
+                       all_obs)})
+total_time_permu <- Sys.time() - start_time
+parallel::stopCluster(cl)
+
+# not parallel
+start_time <- Sys.time()
+permutation_test <- sapply(iteration_seq, FUN = compute_d_permuted,
+                           gamma = gamma,
+                           dat_set_permu = dat_set_permu,
                            gurobi_model_permu = gurobi_model_permu,
-                           all_obs = all_obs,
-                           mc.set.seed = TRUE,
-                           mc.cores = 1) # detectCores() - 2
-total_time_permu <- Sys.time() - start_time_permu
+                           gurobi_model_permu_regul = gurobi_model_permu_regul,
+                           all_obs = all_obs)
+total_time_permu <- Sys.time() - start_time
 
 # Save objects to a file
-saveRDS(permutation_test, file = "permutation_test_100_20_1.rds")
-# Restore the objects
-permutation_test <- readRDS("permutation_test_100.rds")
+saveRDS(permutation_test_result, file = "permutation_test_result.rds")
+saveRDS(total_time_permu, file = "total_time_permu.rds")
+
+# # Restore the objects
+# permutation_test_result <- readRDS("permutation_test_result.rds")
+
+
+# Saving the result sorted by the computation
+iteration_number <- 3
+result_d <- rep(NA, iteration_number) # test statistic with ip and regularisation
+result_d_nip <- rep(NA, iteration_number)  # test statistic without ip and with regularisation
+result_d_nreg <- rep(NA, iteration_number)  # test statistic with ip and without regularisation
+result_d_nip_nreg <- rep(NA, iteration_number)  # test statistic without ip and without regularisation
+
+nfea_result_d <- list() # no result - test statistic with ip and regularisation
+nfea_result_d_nip <- list()  # no result - test statistic without ip and with regularisation
+nfea_result_d_nreg <- list()  # no result - test statistic with ip and without regularisation
+nfea_result_d_nip_nreg <- list()  # no result - test statistic without ip and without regularisation
+
+saving_nfea <- 1
+for (i in 1:iteration_number) {
+  if (is.numeric(permutation_test_result[[i]]$d)) {
+    result_d[i] <- permutation_test_result[[i]]$d
+  } else {
+    nfea_result_d[[saving_nfea]] <- list(ermutation_test_result[[i]]$d)
+    saving_nfea <- saving_nfea + 1
+  }
+
+  if (is.numeric(permutation_test_result[[i]]$d_nip)) {
+    result_d[i] <- permutation_test_result[[i]]$d_nip
+  } else {
+    nfea_result_d[[saving_nfea]] <- list(permutation_test_result[[i]]$d_nip)
+    saving_nfea <- saving_nfea + 1
+  }
+
+  if (is.numeric(permutation_test_result[[i]]$d_nreg)) {
+    result_d[i] <- permutation_test_result[[i]]$d_nreg
+  } else {
+    nfea_result_d[[saving_nfea]] <- list(permutation_test_result[[i]]$d_nreg)
+    saving_nfea <- saving_nfea + 1
+  }
+
+  if (is.numeric(permutation_test_result[[i]]$d_nip_nreg)) {
+    result_d[i] <- permutation_test_result[[i]]$d_nip_nreg
+  } else {
+    nfea_result_d[[saving_nfea]] <- list(permutation_test_result[[i]]$d_nip_nreg)
+    saving_nfea <- saving_nfea + 1
+  }
+}
 
 
 ################################################################################
-# Fragen / TODOs
+# TODO
 ################################################################################
-# Bei der Berechnung von xi: was steht da in den Constraints der
-# Theortisch hinzugefügten minimalen und maximalen Elementen
-
-# Analoge Frage bei Berechnung von xi, was ist mit den maximalen
-# Elementen
-
-# @Georg: Du meintest, dass du eine Presolve-gurobi R-Version gefunden hast.
-# Könntest du mir den Namen der Funktion am Montag geben?
-
-# Fehlt (außer IP) noch etwas bei der Berechnung?
-
-# Was für ein Einfluss hat es, dass die numerische Variable auch zusammen
-# gefasst wurde?
-
-# Wäre es ok, wenn ich den Code statt einmal 1000 Permutation, 5 mal 200
-# Permutationen berechnen lasse? (natürlich mit unterschiedlichen Seeds)
-
-
-# TODO Hannah nächste Woche
-# IP Programmierung
-# Komplett durchlaufen lassen
-# seed setzen bei mclapply nachsehen -> irgendwie immer zweimal hintereinander
-#     der selbe
-
-
+# change name from dup_... to count_... in dat_set /dat_final columns

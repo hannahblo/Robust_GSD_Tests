@@ -138,13 +138,47 @@ rm(non_na)
 # Data Set: 100 womand and 100 man randomly sampled
 # (and a small test data set --> see example 2)
 ################################################################################
-# # Test data set of example is given by
+# ## Test data set of example is given by
 # set.seed(48)
 # size_f_m <- 7
+# dat_set <- dat_final
+# cumsum_female <- cumsum(dat_set$dup_female)
+# cumsum_male <- cumsum(dat_set$dup_male)
+# sum_female <- sum(dat_set$dup_female)
+# sum_male <- sum(dat_set$dup_male)
+# dat_set$dup_female <- 0
+# dat_set$dup_male <- 0
+#
+# # Compute a random sample
+# woman_sample <- sample(seq(0, sum_female), size = size_f_m, replace = FALSE)
+# for (i in woman_sample) {
+#   index_sample_value <- which.max(cumsum_female >= i)
+#   dat_set$dup_female[index_sample_value] <-
+#     dat_set$dup_female[index_sample_value] + 1
+# }
+#
+# man_sample <- sample(seq(0, sum_male), size = size_f_m, replace = FALSE)
+# for (i in man_sample) {
+#   index_sample_value <- which.max(cumsum_male >= i)
+#   dat_set$dup_male[index_sample_value] <-
+#     dat_set$dup_male[index_sample_value] + 1
+# }
+#
+#
+# dat_set$dup_all <- dat_set$dup_female + dat_set$dup_male
+# dat_set <- dat_set[-which(dat_set$dup_all == 0), ]
+# # add minimal and maximal element row (the last two rows of dat_final)
+# # Note that the minimal and maximal value has neither a value for male nor female
+# # -> does not increase the sample size
+# dat_set[c(dim(dat_set)[1] + 1, dim(dat_set)[1] + 2), ] <-
+#   dat_final[c(dim(dat_final)[1] - 1, dim(dat_final)[1]), ]
+# dat_set$ID <- seq(1, dim(dat_set)[1])
 # dat_set <-  dat_set[c(8,9,11,12, 15, 16), ]
 # dat_set$ID <- seq(1, dim(dat_set)[1])
 
 
+
+## Data Set used for computations
 set.seed(48)
 size_f_m <- 100
 dat_set <- dat_final
@@ -404,7 +438,7 @@ permu_rhs <- c(rep(xi * eps, dim_r1[1]), eps_xi_r2_constraint)
 # set minimales and maximales Element to 0 and 1 resp (using lower and upper bounds)
 gurobi_model_permu <- list()
 gurobi_model_permu$A <- permu_A
-gurobi_model_permu$rhs <- permu_rhs
+gurobi_model_permu$rhs <- rep(0, dim_r1[1] + dim_r2[1])
 gurobi_model_permu$lb <- c(rep(0, dim_r1[2] - 1), 1)
 gurobi_model_permu$ub <- c(rep(1, dim_r1[2] - 2), 0, 1)
 gurobi_model_permu$vtypes <- c(rep("C", dim_r1[2]))
@@ -416,7 +450,7 @@ gurobi_model_permu$sense <- gurobi_sense
 # Gurobi Model (regularization)
 # set minimales and maximales Element to 0 and 1 resp (using lower and upper bounds)
 gurobi_model_permu_regul <- gurobi_model_permu
-gurobi_model_permu_regul$rhs <- rep(0, dim_r1[1] + dim_r2[1])
+gurobi_model_permu_regul$rhs <-  permu_rhs
 
 # Reduce dat_set only to the part needed in the permutation test
 dat_set_permu <- dat_set[, c("dup_female", "dup_male", "dup_all")]
@@ -527,38 +561,38 @@ d_observed <- compute_d_permuted(1, gamma,
                                  all_obs,
                                  permutated_f_m = FALSE)
 total_time_d_obs <- Sys.time() - start_time_d_obs
-
+# saveRDS(d_observed, file = "d_observed.rds")
 
 ### Test statistic computation based on iteration_number permuted observations
 # Note that for a different number of cores it might be that the output is not
 # the same, even when seed is set correctly
 
-iteration_number <- 2
+iteration_number <- 20
 iteration_seq <- seq(1, iteration_number)
-no_cores <- parallel::detectCores(logical = TRUE)
-cl <- parallel::makeCluster(no_cores - 6)
-doParallel::registerDoParallel(cl)
-clusterExport(cl,
-              varlist = c("compute_d_permuted","gamma", "dat_set_permu",
-                       "gurobi_model_permu", "gurobi_model_permu_regul",
-                       "all_obs"),
-              envir = environment())
-clusterEvalQ(cl,  library(gurobi))
+# no_cores <- parallel::detectCores(logical = TRUE)
+# cl <- parallel::makeCluster(no_cores - 6)
+# doParallel::registerDoParallel(cl)
+# clusterExport(cl,
+#               varlist = c("compute_d_permuted","gamma", "dat_set_permu",
+#                        "gurobi_model_permu", "gurobi_model_permu_regul",
+#                        "all_obs"),
+#               envir = environment())
+# clusterEvalQ(cl,  library(gurobi))
 
-RNGkind("L'Ecuyer-CMRG")
+# RNGkind("L'Ecuyer-CMRG")
 set.seed(858)
-s <- .Random.seed
-clusterSetRNGStream(cl = cl, iseed = s)
-
-start_time <- Sys.time()
-permutation_test_result <- parLapply(cl, iteration_seq, fun = function(x) {
-    compute_d_permuted(x, gamma,
-                       dat_set_permu,
-                       gurobi_model_permu,
-                       gurobi_model_permu_regul,
-                       all_obs)})
-total_time_permu <- Sys.time() - start_time
-parallel::stopCluster(cl)
+# s <- .Random.seed
+# clusterSetRNGStream(cl = cl, iseed = s)
+#
+# start_time <- Sys.time()
+# permutation_test_result <- parLapply(cl, iteration_seq, fun = function(x) {
+#     compute_d_permuted(x, gamma,
+#                        dat_set_permu,
+#                        gurobi_model_permu,
+#                        gurobi_model_permu_regul,
+#                        all_obs)})
+# total_time_permu <- Sys.time() - start_time
+# parallel::stopCluster(cl)
 
 # not parallel
 start_time <- Sys.time()
@@ -578,8 +612,7 @@ saveRDS(total_time_permu, file = "total_time_permu.rds")
 # permutation_test_result <- readRDS("permutation_test_result.rds")
 
 
-# Saving the result sorted by the computation
-iteration_number <- 3
+# Saving the result sorted by the computation (iteration_number see line 536)
 result_d <- rep(NA, iteration_number) # test statistic with ip and regularisation
 result_d_nip <- rep(NA, iteration_number)  # test statistic without ip and with regularisation
 result_d_nreg <- rep(NA, iteration_number)  # test statistic with ip and without regularisation

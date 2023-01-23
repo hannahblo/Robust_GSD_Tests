@@ -240,7 +240,7 @@ rm(size_f_m)
 # constraint_r1_values
 # computation time: Time difference of 4.239958 secs
 # disk space: 831.8 kB
-# dimensions: 8642    7
+# dimensions: 8642    173
 # number cores: 1
 
 # constraint_r2_values
@@ -409,7 +409,7 @@ rm(xi_gurobi)
 # In paper: See Chapter 5.2
 ################################################################################
 all_obs <- sum(dat_set$dup_all)
-eps <- 0.0001 # 0.0001 -> set eps so small such that eps*xi < 10^{-5}
+eps <- 0.5 # 0.0001 -> set eps so small such that eps*xi < 10^{-5}
 gamma <- 0.01  #1 / 200 # 10 / 200, 20 / 200
 
 
@@ -463,9 +463,9 @@ compute_d_permuted <- function(index, gamma,
                                gurobi_model_permu_regul,
                                all_obs,
                                permutated_f_m = TRUE) {
-
+  
   print(paste0("Bin jetzt bei Permutationsanzahl ", index))
-
+  
   # Compute a random sample
   if (permutated_f_m) {
     woman_sample_index <- sample(seq(1, all_obs),
@@ -475,7 +475,7 @@ compute_d_permuted <- function(index, gamma,
     woman_sample[woman_sample_index] <- 1
     dat_set_permu <- dat_set_permu
     dat_set_permu$dup_female <- 0
-
+    
     index_sample <- 1
     for (i in 1:(dim(dat_set_permu)[1] - 2)) {
       # Beachte, dass für jedes i dat_set_permu$dup_all[i] >= 1 sein muss, da es
@@ -489,20 +489,19 @@ compute_d_permuted <- function(index, gamma,
     dat_set_permu$dup_male <- dat_set_permu$dup_all - dat_set_permu$dup_female
     dat_set_permu[c(dim(dat_set_permu)[1] - 1, dim(dat_set_permu)[1]), ] <- 0
   }
-
-
+  
+  
   # Zielfunktion definieren
-  obj_nip <- (dat_set_permu$dup_female / all_obs) -
-    (dat_set_permu$dup_male / all_obs)
-
-  obj_pi_u <- (1 - gamma) * (dat_set_permu$dup_female / all_obs)
-  obj_pi_u[dim(dat_set_permu)[1]] <- gamma
-
-  obj_pi_l <- (1 - gamma) * (dat_set_permu$dup_male / all_obs)
-  obj_pi_l[dim(dat_set_permu)[1] - 1] <- gamma
-
-  obj_pi <- as.vector(obj_pi_u - obj_pi_l)
-
+  obj_nip <- (dat_set_permu$dup_male / all_obs) - (dat_set_permu$dup_female / all_obs)
+  
+  obj_pi_f <- (1 - gamma) * (dat_set_permu$dup_female / all_obs)
+  obj_pi_f[dim(dat_set_permu)[1]] <- gamma
+  
+  obj_pi_m <- (1 - gamma) * (dat_set_permu$dup_male / all_obs)
+  obj_pi_m[dim(dat_set_permu)[1] - 1] <- gamma
+  
+  obj_pi <- as.vector(obj_pi_m - obj_pi_f)
+  
   # storing return list
   d_return <- list()
   # Computing d(x,y) (no ip, no regularization)
@@ -514,19 +513,18 @@ compute_d_permuted <- function(index, gamma,
   } else {
     d_return$d_nip_nreg <- result_nip_nreg
   }
-
+  
   # Computing d(x,y) (no ip, regularization)
   g_model_nip <- gurobi_model_permu_regul
-  g_model_nip$obj <- (dat_set_permu$dup_female / all_obs) -
-    (dat_set_permu$dup_male / all_obs)
+  g_model_nip$obj <- obj_nip
   result_nip <- gurobi::gurobi(g_model_nip)
   if (result_nip$status == "OPTIMAL") {
     d_return$d_nip <- result_nip$objva
   } else {
     d_return$d_nip <- result_nip
   }
-
-# Computing d(x,y) (ip, no regularization)
+  
+  # Computing d(x,y) (ip, no regularization)
   g_model_nreg <- gurobi_model_permu
   g_model_nreg$obj <- obj_pi
   result_nreg <- gurobi::gurobi(g_model_nreg)
@@ -535,7 +533,7 @@ compute_d_permuted <- function(index, gamma,
   } else {
     d_return$d_nreg <- result_nreg
   }
-
+  
   # Computing d(x,y) (ip, regularization)
   g_model <- gurobi_model_permu_regul
   g_model$obj <- obj_pi
@@ -545,9 +543,9 @@ compute_d_permuted <- function(index, gamma,
   } else {
     d_return$d <- result
   }
-
+  
   # Storing the results
-
+  
   return(d_return)
 }
 
@@ -561,52 +559,52 @@ d_observed <- compute_d_permuted(1, gamma,
                                  all_obs,
                                  permutated_f_m = FALSE)
 total_time_d_obs <- Sys.time() - start_time_d_obs
-# saveRDS(d_observed, file = "d_observed.rds")
+saveRDS(d_observed, file = "d_observed_100_seed_48.rds")
 
 ### Test statistic computation based on iteration_number permuted observations
 # Note that for a different number of cores it might be that the output is not
 # the same, even when seed is set correctly
 
-iteration_number <- 20
+iteration_number <- 2000
 iteration_seq <- seq(1, iteration_number)
-# no_cores <- parallel::detectCores(logical = TRUE)
-# cl <- parallel::makeCluster(no_cores - 6)
-# doParallel::registerDoParallel(cl)
-# clusterExport(cl,
-#               varlist = c("compute_d_permuted","gamma", "dat_set_permu",
-#                        "gurobi_model_permu", "gurobi_model_permu_regul",
-#                        "all_obs"),
-#               envir = environment())
-# clusterEvalQ(cl,  library(gurobi))
+no_cores <- 6  # parallel::detectCores(logical = TRUE)
+cl <- parallel::makeCluster(no_cores)
+doParallel::registerDoParallel(cl)
+clusterExport(cl,
+              varlist = c("compute_d_permuted","gamma", "dat_set_permu",
+                          "gurobi_model_permu", "gurobi_model_permu_regul",
+                          "all_obs"),
+              envir = environment())
+clusterEvalQ(cl,  library(gurobi))
 
-# RNGkind("L'Ecuyer-CMRG")
+RNGkind("L'Ecuyer-CMRG")
 set.seed(858)
-# s <- .Random.seed
-# clusterSetRNGStream(cl = cl, iseed = s)
-#
-# start_time <- Sys.time()
-# permutation_test_result <- parLapply(cl, iteration_seq, fun = function(x) {
-#     compute_d_permuted(x, gamma,
-#                        dat_set_permu,
-#                        gurobi_model_permu,
-#                        gurobi_model_permu_regul,
-#                        all_obs)})
-# total_time_permu <- Sys.time() - start_time
-# parallel::stopCluster(cl)
+s <- .Random.seed
+clusterSetRNGStream(cl = cl, iseed = s)
 
-# not parallel
 start_time <- Sys.time()
-permutation_test <- sapply(iteration_seq, FUN = compute_d_permuted,
-                           gamma = gamma,
-                           dat_set_permu = dat_set_permu,
-                           gurobi_model_permu = gurobi_model_permu,
-                           gurobi_model_permu_regul = gurobi_model_permu_regul,
-                           all_obs = all_obs)
+permutation_test_result <- parLapply(cl, iteration_seq, fun = function(x) {
+  compute_d_permuted(x, gamma,
+                     dat_set_permu,
+                     gurobi_model_permu,
+                     gurobi_model_permu_regul,
+                     all_obs)})
 total_time_permu <- Sys.time() - start_time
+parallel::stopCluster(cl)
+
+# # not parallel
+# start_time <- Sys.time()
+# permutation_test <- sapply(iteration_seq, FUN = compute_d_permuted,
+#                            gamma = gamma,
+#                            dat_set_permu = dat_set_permu,
+#                            gurobi_model_permu = gurobi_model_permu,
+#                            gurobi_model_permu_regul = gurobi_model_permu_regul,
+#                            all_obs = all_obs)
+# total_time_permu <- Sys.time() - start_time
 
 # Save objects to a file
-saveRDS(permutation_test_result, file = "permutation_test_result.rds")
-saveRDS(total_time_permu, file = "total_time_permu.rds")
+saveRDS(permutation_test_result, file = "permutation_test_result_100_seed_48.rds")
+saveRDS(total_time_permu, file = "total_time_permu_100_seed_48.rds")
 
 # # Restore the objects
 # permutation_test_result <- readRDS("permutation_test_result.rds")
@@ -628,24 +626,24 @@ for (i in 1:iteration_number) {
   if (is.numeric(permutation_test_result[[i]]$d)) {
     result_d[i] <- permutation_test_result[[i]]$d
   } else {
-    nfea_result_d[[saving_nfea]] <- list(ermutation_test_result[[i]]$d)
+    nfea_result_d[[saving_nfea]] <- list(permutation_test_result[[i]]$d)
     saving_nfea <- saving_nfea + 1
   }
-
+  
   if (is.numeric(permutation_test_result[[i]]$d_nip)) {
     result_d[i] <- permutation_test_result[[i]]$d_nip
   } else {
     nfea_result_d[[saving_nfea]] <- list(permutation_test_result[[i]]$d_nip)
     saving_nfea <- saving_nfea + 1
   }
-
+  
   if (is.numeric(permutation_test_result[[i]]$d_nreg)) {
     result_d[i] <- permutation_test_result[[i]]$d_nreg
   } else {
     nfea_result_d[[saving_nfea]] <- list(permutation_test_result[[i]]$d_nreg)
     saving_nfea <- saving_nfea + 1
   }
-
+  
   if (is.numeric(permutation_test_result[[i]]$d_nip_nreg)) {
     result_d[i] <- permutation_test_result[[i]]$d_nip_nreg
   } else {

@@ -22,16 +22,37 @@ source("constraints_r1_r2_aktuell.R") # contains the functions compute_constrain
 
 # dermatology data, doc: https://archive.ics.uci.edu/ml/datasets/dermatology
 derma_data_raw <- read_csv("data/dermatology.data")
+# credit application data, doc: http://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29
+credit_appl_data <- read_csv("data/german.data")
 
-derma_data <- derma_data_raw[,c(34,1,2,3,4,11)] %>% as.data.frame()
+#convert to proper data frame 
+credit_data = as.data.frame(credit_appl_data)
+colnames(credit_data) = "one"
+credit_data = credit_data %>% separate(one, into = seq(1,21) %>% as.character() )
 
-colnames(derma_data) <- c("age", "erythema", "scaling", "d-broders", "itching", "family_history")  
+# select variables credit amount, employment status, savings account and approval (binary)
+credit_data = select(credit_data, c("5", "7", "6", "2", "3", "21"))
+colnames(credit_data) <- c("credit", "employment", "savings", "duration", "history", "approval")  
 
-derma_data_pos = subset(derma_data, subset = family_history == 1)
-derma_data_neg = subset(derma_data, subset = family_history == 0)
+credit_data$approval = credit_data$approval %>% as.factor()
+credit_data$credit = credit_data$credit %>% as.numeric()
+#credit_data$age = credit_data$age %>% as.numeric()
+credit_data$history = credit_data$history %>% as.ordered %>% fct_rev
 
+credit_data$savings = credit_data$savings %>% factor(ordered = FALSE) 
+levels(credit_data$savings) = c("< 100","< 500","< 1000",">= 1000","no") 
+credit_data$employment = credit_data$employment %>% as.ordered
+levels(credit_data$employment) = c("no","< 1","< 4","< 7",">= 7")
 
-dat_convert_values <- derma_data
+credit_data_pos = subset(credit_data, subset = approval == 1)
+credit_data_neg = subset(credit_data, subset = approval == 2)
+# some descriptives
+summary(credit_data_neg)
+summary(credit_data_pos)
+
+credit_data = select(credit_data, c("credit", "employment", "history", "approval"))
+
+dat_convert_values = credit_data
 
 # deleting NAs
 # here we are deleting the entry with minimal "Einkommen" value 37. We have to
@@ -46,42 +67,42 @@ for (i in seq(1, dim(dat_convert_values)[1])) {
 dat_convert_values <- dat_convert_values[non_na, ]
 
 # Converting the variables of interest into numeric and order modes
-dat_convert_values[["age"]] <- as.numeric(as.character(
-  dat_convert_values[["age"]]))
+dat_convert_values[["credit"]] <- as.numeric(as.character(
+  dat_convert_values[["credit"]]))
 
 # dat_convert_values[["Ausbildung"]][seq(1,10)]
 # levels(dat_convert_values[["Ausbildung"]])
 # as.ordered(as.numeric(dat_convert_values[["Ausbildung"]]))[seq(1,10)]
-dat_convert_values[["erythema"]] <- as.ordered(as.numeric(
-  dat_convert_values[["erythema"]]))
+dat_convert_values[["employment"]] <- as.ordered(as.numeric(
+  dat_convert_values[["employment"]]))
 
 # dat_convert_values[["Gesundheit"]][seq(1,10)]
 # levels(dat_convert_values[["Gesundheit"]])
 # as.ordered(as.numeric(dat_convert_values[["Gesundheit"]]))[seq(1,10)]
 # # Note that here 1 is the best and 6 the worst health status --> needs to be
 # # switched --> (7 -)
-dat_convert_values[["itching"]] <- as.ordered( 7 - as.numeric(
-  dat_convert_values[["itching"]]))
+dat_convert_values[["history"]] <- as.ordered(as.numeric(
+  dat_convert_values[["history"]]))
 
 #restrict to variables of interest
-dat <- dat_convert_values[ , c("age",  "erythema", "itching", "family_history")]
+dat <- dat_convert_values
 
 
 
 # Duplicate handling
-dat_dup_divi_fam <- dat %>% group_by_all() %>% count()
-dat_dup_without_fam <- duplicated(dat_dup_divi_fam[, c("age",  "erythema", "itching")])
+dat_dup_divi_appr <- dat %>% group_by_all() %>% count()
+dat_dup_without_appr <- duplicated(dat_dup_divi_appr[, c("credit", "employment", "history")])
 
 
-data_pos <- dat_dup_divi_fam[which(dat_dup_divi_fam$family_history == 1),
-                                c(1, 2, 3, 5)] # deleting "fam history" column
+data_pos <- dat_dup_divi_appr[which(dat_dup_divi_appr$approval == 1),
+                             c(1, 2, 3, 5)] # deleting "approval" column
 data_pos <- matrix(as.numeric(as.matrix(data_pos)), ncol = 4)
 
 colnames(data_pos) <-  c("numeric", "ordinal_1", "ordinal_2", "dup_pos")
 
 
-data_neg <- dat_dup_divi_fam[which(dat_dup_divi_fam$family_history == 0),
-                             c(1, 2, 3, 5)] # deleting "fam history" column
+data_neg <- dat_dup_divi_appr[which(dat_dup_divi_appr$approval == 2),
+                             c(1, 2, 3, 5)] # deleting "appproval" column
 data_neg <- matrix(as.numeric(as.matrix(data_neg)), ncol = 4)
 
 colnames(data_neg) <-  c("numeric", "ordinal_1", "ordinal_2", "dup_neg")
@@ -129,7 +150,7 @@ rm(index_max)
 rm(index_min)
 rm(non_na)
 ################################################################################
-# Data Set: 100 womand and 100 man randomly sampled
+# Data Set: 100 women and 100 men randomly sampled
 # (and a small test data set --> see example 2)
 ################################################################################
 # ## Test data set of example is given by
@@ -213,6 +234,8 @@ dat_set$ID <- seq(1, dim(dat_set)[1])
 # dim(dat_set)
 # sum(dat_set$dup_all)
 # dat_set$ID <- seq(1, dim(dat_set)[1])
+
+
 
 rm(cumsum_pos)
 rm(cumsum_neg)

@@ -4,7 +4,8 @@
 library(purrr)# for detect_index
 library(dplyr) # for group_by
 library(slam) # simple triplet matrix
-#
+library(tidyr)
+library(forcats)
 library(gurobi) # solving LP
 library(parallel) # for mclapply (only works for linux in a parallel version)
 library(doParallel)

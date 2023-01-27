@@ -17,12 +17,10 @@ library(readr)
 source("constraints_r1_r2_aktuell.R") # contains the functions compute_constraints...
 
 ################################################################################
-# Prepare Data Set: Derma Data
+# Prepare Data Set: Credit Data
 ################################################################################
 
 
-# dermatology data, doc: https://archive.ics.uci.edu/ml/datasets/dermatology
-derma_data_raw <- read_csv("data/dermatology.data")
 # credit application data, doc: http://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29
 credit_appl_data <- read_csv("data/german.data")
 

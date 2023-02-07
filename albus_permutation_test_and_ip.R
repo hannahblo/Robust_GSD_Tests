@@ -23,7 +23,8 @@ source("compute_permutation_test.R")
 # one could also look at V418
 # "V2" is the identification number of the respondent.
 
-dat_read <- foreign::read.spss("ZA5240_v2-1-0.sav", to.data.frame = TRUE,
+setwd("data/")
+dat_read <- foreign::read.spss("albus.sav", to.data.frame = TRUE,
                                sep = ",", dec = ".")
 dat_convert_values <- dat_read[, c("V5", "V226", "V102", "V417", "V81", "V7")]
 colnames(dat_convert_values) <- c("Split", "Gesundheit", "Ausbildung",
@@ -141,7 +142,7 @@ rm(non_na)
 # Randomly sampe a subset of 100 observations in each group
 ################################################################################
 set.seed(48)
-dat_set <- sample_random_subset(dat_final, 100)
+dat_set <- sample_random_subset(dat_final)
 
 
 ################################################################################
@@ -169,7 +170,7 @@ total_time_r2 <- Sys.time() - start_time_r2
 # Informations about gurobi (page 643ff):
 # https://www.gurobi.com/wp-content/plugins/hd_documentations/documentation/9.0/refman.pdf
 xi <- compute_xi(constraint_r1_values, constraint_r2_values, dim(dat_set)[1])
-saveRDS(xi, "xi_albus.rds")
+# saveRDS(xi, "xi_albus.rds")
 
 
 ### Step 3: Compute the permutation test based on four different eps values
@@ -196,13 +197,13 @@ d_observed <- compute_d(1,
                         gurobi_permu,
                         permutate_obs = FALSE)
 total_time_d_obs <- Sys.time() - start_time_d_obs
-saveRDS(d_observed, file = "d_observed_credit.rds")
+# saveRDS(d_observed, file = "d_observed_albus.rds")
 
 ### Test statistic computation based on iteration_number permuted observations
 # Note that gurobi already parallelises, thus parallelisation does not necessarily
 # help to reduce the computation time
 
-iteration_number <- 2000
+iteration_number <- 1000
 iteration_seq <- seq(1, iteration_number)
 set.seed(2893)
 start_time <- Sys.time()

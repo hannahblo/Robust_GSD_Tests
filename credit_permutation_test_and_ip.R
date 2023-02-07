@@ -53,9 +53,8 @@ credit_data = select(credit_data, c("credit", "employment", "history", "approval
 dat_convert_values = credit_data
 
 # deleting NAs
-# here we are deleting the entry with minimal "Einkommen" value 37. We have to
-# delete the nas beford considering the rest, because else NA would be added as
-# a further factor in as.order() later
+# We have to delete the nas beford considering the rest, because else NA would
+# be added as a further factor in as.order() later
 non_na <- c()
 for (i in seq(1, dim(dat_convert_values)[1])) {
   if (!any(is.na(dat_convert_values[i,]))) {
@@ -68,17 +67,10 @@ dat_convert_values <- dat_convert_values[non_na, ]
 dat_convert_values[["credit"]] <- as.numeric(as.character(
   dat_convert_values[["credit"]]))
 
-# dat_convert_values[["Ausbildung"]][seq(1,10)]
-# levels(dat_convert_values[["Ausbildung"]])
-# as.ordered(as.numeric(dat_convert_values[["Ausbildung"]]))[seq(1,10)]
 dat_convert_values[["employment"]] <- as.ordered(as.numeric(
   dat_convert_values[["employment"]]))
 
-# dat_convert_values[["Gesundheit"]][seq(1,10)]
-# levels(dat_convert_values[["Gesundheit"]])
-# as.ordered(as.numeric(dat_convert_values[["Gesundheit"]]))[seq(1,10)]
-# # Note that here 1 is the best and 6 the worst health status --> needs to be
-# # switched --> (7 -)
+
 dat_convert_values[["history"]] <- as.ordered(as.numeric(
   dat_convert_values[["history"]]))
 
@@ -153,7 +145,7 @@ rm(non_na)
 # Randomly sampe a subset of 100 observations in each group
 ################################################################################
 set.seed(48)
-dat_set <- sample_random_subset(dat_final, 100)
+dat_set <- sample_random_subset(dat_final)
 
 
 ################################################################################

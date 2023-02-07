@@ -1,4 +1,14 @@
-sample_random_subset <- function(dat_final, size_each_group = 100) {
+sample_random_subset <- function(dat_final, size_each_group = 100, 
+                                 size_group_a = NULL, size_group_b = NULL) {
+  
+  if (!is.null(size_each_group)) {
+    size_group_a <- size_each_group
+    size_group_b <- size_each_group
+  } else {
+    if (is.null(size_group_a) || is.null(size_group_b)) {
+      stop("Input error")
+    }
+  }
 
   dat_set <- dat_final
   cumsum_group_a <- cumsum(dat_set$count_group_a)
@@ -9,14 +19,14 @@ sample_random_subset <- function(dat_final, size_each_group = 100) {
   dat_set$count_group_b <- 0
 
   # Compute a random sample
-  woman_sample <- sample(seq(0, sum_group_a), size = size_each_group, replace = FALSE)
+  woman_sample <- sample(seq(0, sum_group_a), size = size_group_a, replace = FALSE)
   for (i in woman_sample) {
     index_sample_value <- which.max(cumsum_group_a >= i)
     dat_set$count_group_a[index_sample_value] <-
       dat_set$count_group_a[index_sample_value] + 1
   }
 
-  man_sample <- sample(seq(0, sum_group_b), size = size_each_group, replace = FALSE)
+  man_sample <- sample(seq(0, sum_group_b), size = size_group_b, replace = FALSE)
   for (i in man_sample) {
     index_sample_value <- which.max(cumsum_group_b >= i)
     dat_set$count_group_b[index_sample_value] <-
@@ -178,7 +188,8 @@ compute_gurobi_permu <- function(eps_0, eps_1, eps_2, eps_3, eps_4,
 compute_d <- function(index,
                       dat_set_permu,
                       gurobi_permu,
-                      permutate_obs = TRUE) {
+                      permutate_obs = TRUE,
+                      reverse_objective = FALSE) {
 
 
 
@@ -211,8 +222,14 @@ compute_d <- function(index,
 
 
   # compute objective function
-  gurobi_permu$gurobi_model_permu$obj <-
-    (dat_set_permu$count_group_b / all_obs) - (dat_set_permu$count_group_a / all_obs)
+  if (reverse_objective) {
+    gurobi_permu$gurobi_model_permu$obj <-
+       -(dat_set_permu$count_group_b / all_obs) + (dat_set_permu$count_group_a / all_obs)
+  } else {
+    gurobi_permu$gurobi_model_permu$obj <-
+      (dat_set_permu$count_group_b / all_obs) - (dat_set_permu$count_group_a / all_obs)
+  }
+  
 
 
   # storing return list

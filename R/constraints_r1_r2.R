@@ -1,4 +1,6 @@
 #' This functions computes the constraints given by R_1
+#' Note that, in contrast to the article, the implementation was done with having
+#' the 'less or equal' and not the 'greater or equal' relation in mind.
 #'
 #' @param data_set: This is a data_frame which has as column names ordinal_1,
 #' ordinal_2, numeric
@@ -127,6 +129,8 @@ compute_constraints_r1 <- function(data_set) {
 
 
 #' This functions computes the constraints given by R_2
+#' Note that, in contrast to the article, the implementation was done with having
+#' the 'less or equal' and not the 'greater or equal' relation in mind.
 #'
 #' @param data_set: This is a data_frame which has as column names ordinal_1,
 #' ordinal_2, numeric

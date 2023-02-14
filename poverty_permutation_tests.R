@@ -28,7 +28,7 @@ source("R/compute_permutation_test.R") # permutation test, sample etc
 # poverty analysis study, for further informations about the data set, see
 # https://search.gesis.org/research_data/ZA5240 (accessed: 09.02.2023)
 
-dat_read <- foreign::read.spss("data/ZA5240_v2-1-0.sav", to.data.frame = TRUE,
+dat_read <- foreign::read.spss("data/ZA5240_v2-2-0.sav", to.data.frame = TRUE,
                                sep = ",", dec = ".")
 dat_convert_values <- dat_read[, c("V5", "V226", "V102", "V417", "V81", "V7")]
 colnames(dat_convert_values) <- c("Split", "Gesundheit", "Ausbildung",

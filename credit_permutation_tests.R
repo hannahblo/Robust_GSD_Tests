@@ -126,6 +126,7 @@ index_min <- which(dat_final$numeric == min(dat_final$numeric))
 # dat_final[index_min, ]
 
 # Add minimal and maximal at the bottom of the matrix
+
 # ATTENTION: It is very important for the following analysis that the
 # the input at the second largest row is the minimal value and the largest row
 # represents the maximal value

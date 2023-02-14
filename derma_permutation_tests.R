@@ -16,7 +16,7 @@ library(readr)  # data preparation
 library(forcats) # data preparation
 
 source("R/constraints_r1_r2.R") # contains the functions compute_constraints...
-source("R/sample_permutation_test.R")
+source("R/sample_permutation_test.R") # permutation test, sample etc
 ################################################################################
 # Prepare Data Set: Derma Data
 ################################################################################

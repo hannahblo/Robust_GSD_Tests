@@ -19,8 +19,8 @@ library(latex2exp) # for gamma (and epsilon) symbols
 library(RColorBrewer) # color palettes
 library(rcartocolor) # color gradients
 
-source("R/constraints_r1_r2_aktuell.R") # constraint matrix
-source("R/compute_permutation_test.R") # permutation test, sample etc
+source("R/constraints_r1_r2.R") # contains the functions compute_constraints...
+source("R/sample_permutation_test.R") # permutation test, sample etc
 
 ################################################################################
 # Prepare Data Set

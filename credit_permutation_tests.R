@@ -291,7 +291,7 @@ figure_2 <- ggplot(df, aes(x = values, y = fct_rev(ind), fill = stat(x))) +
   xlim(c(-0.125,0.025)) +
   theme(axis.title.x = element_text(margin = margin(t = 20))) +
   theme(plot.title = element_text(hjust = 0.8)) +
-  scale_fill_viridis_c(name = "Value of Test Statistic", option = "C") +
+  scale_fill_viridis_c(name = "Value of Test Statistic", option = "D") +
   coord_cartesian(clip = "off") +
   labs(title = legend_title) +
   theme_ridges(font_size = 18, grid = TRUE) +

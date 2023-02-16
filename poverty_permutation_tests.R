@@ -103,7 +103,11 @@ index_max <- which(dat_final$numeric == max(dat_final$numeric))
 index_min <- which(dat_final$numeric == min(dat_final$numeric))
 # dat_final[index_min, ]
 
-# # Add minimal and maximal at the bottom of the matrix
+# Add minimal and maximal at the bottom of the matrix
+
+# ATTENTION: It is very important for the following analysis that the
+# the input at the second largest row is the minimal value and the largest row
+# represents the maximal value
 dat_final[dim(dat_final)[1] + 1, ] <- c(min(dat_final$ordinal_1),
                                         min(dat_final$ordinal_2),
                                         dat_final[index_min, 3],
@@ -188,7 +192,7 @@ saveRDS(d_observed_reverse, file = "d_observed_reverse_albus.rds")
 # Note that gurobi already parallels, thus parallelism does not necessarily
 # help to reduce the computation time
 
-iteration_number <- 1000
+iteration_number <- 7# 1000
 iteration_seq <- seq(1, iteration_number)
 set.seed(2893)
 start_time <- Sys.time()

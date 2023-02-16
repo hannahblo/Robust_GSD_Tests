@@ -110,7 +110,7 @@ compute_xi <- function(constraint_r1_values,
   gurobi_model_xi$modelsense <- "max"
   gurobi_model_xi$sense <- gurobi_sense
 
-  if (dim(gurobi_model_xi$A)[2] != number_observations) {
+  if (dim(gurobi_model_xi$A)[2] != number_observations + 1) {
     stop("constraint matrix dimension and number_observations do not match. Hint: check if the ID corrsponds to the sequence seq(1, number different observations).")
   }
   xi_gurobi <- gurobi::gurobi(gurobi_model_xi)

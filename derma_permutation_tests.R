@@ -14,6 +14,13 @@ library(slam) # simple triplet matrix
 library(gurobi) # solving LP
 library(readr)  # data preparation
 library(forcats) # data preparation
+library(ggplot2) # visualization
+library(reshape2) # visualization
+library(tidyverse) # data wrangling
+library(ggridges) # visualization
+library(latex2exp) # for gamma (and epsilon) symbols
+library(RColorBrewer) # color palettes
+library(rcartocolor) # color gradients
 
 source("R/constraints_r1_r2.R") # contains the functions compute_constraints...
 source("R/sample_permutation_test.R") # permutation test, sample etc
@@ -188,13 +195,13 @@ d_observed <- compute_d(1,
                         permutate_obs = FALSE,
                         reverse_objective = TRUE)
 total_time_d_obs <- Sys.time() - start_time_d_obs
-saveRDS(d_observed, file = "d_observed_derma.rds")
+# saveRDS(d_observed, file = "d_observed_derma.rds")
 
 ### Test statistic computation based on iteration_number permuted observations
 # Note that gurobi already parallels, thus parallelism does not necessarily
 # help to reduce the computation time
 
-iteration_number <- 1000
+iteration_number <- 7 # 1000
 iteration_seq <- seq(1, iteration_number)
 set.seed(2893)
 start_time <- Sys.time()

@@ -1,7 +1,7 @@
 # Analysis of Dermatological Symptoms, Credit Approval Data and Multi-Dimensional Poverty Measurement
 
 ## Introduction
-This anonymous repository contains R-code and data sets corresponding to the "Robust Statistical Comparison of Random Variables with Locally Varying Scale of Measurement" article. We apply the introduced tests on three examples: dermatological symptoms, credit approval data, and multi-dimensional poverty measurement.
+This repository contains R-code and data sets corresponding to the "Robust Statistical Comparison of Random Variables with Locally Varying Scale of Measurement" article written by C. Jansen, G. Schollmeyer, H. Blocher, J. Rodemann and T. Augustin. We apply the introduced tests on three examples: dermatological symptoms, credit approval data, and multi-dimensional poverty measurement.
 
 The structure of the repository is as follows:
 - File poverty_permutation_tests.R is a multi-dimensional poverty analysis.
